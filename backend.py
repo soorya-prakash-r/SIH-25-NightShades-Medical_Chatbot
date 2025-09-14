@@ -1,34 +1,36 @@
 import os
-from flask import Flask, request, Response, jsonify
+from flask import Flask, request, jsonify
 import google.generativeai as genai
 from dotenv import load_dotenv
-from sarvamai import SarvamAI
-import requests
+from twilio.rest import Client
 
 # ---------------- Load Keys ---------------- #
 load_dotenv()
-AI_KEY = os.getenv("AI_API_KEY")       # Gemini API Key
-SARVAM_KEY = os.getenv("VOICE_API_KEY")  # SarvamAI Key
+AI_KEY = os.getenv("AI_API_KEY")         # Gemini API Key
+TWILIO_SID = os.getenv("TWILIO_SID")     # Twilio Account SID
+TWILIO_AUTH = os.getenv("TWILIO_AUTH")   # Twilio Auth Token
+TWILIO_WHATSAPP = os.getenv("TWILIO_WHATSAPP")  # Twilio Sandbox number e.g. whatsapp:+14155238886
 
-if not AI_KEY or not SARVAM_KEY:
-    raise ValueError("API Keys not found! Please set AI_API_KEY and VOICE_API_KEY in .env")
+if not AI_KEY or not TWILIO_SID or not TWILIO_AUTH or not TWILIO_WHATSAPP:
+    raise ValueError("Please set AI_API_KEY, TWILIO_SID, TWILIO_AUTH, TWILIO_WHATSAPP in .env")
 
 # Configure Gemini
 genai.configure(api_key=AI_KEY)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
-# Configure SarvamAI
-client = SarvamAI(api_subscription_key=SARVAM_KEY)
+# Configure Twilio
+twilio_client = Client(TWILIO_SID, TWILIO_AUTH)
 
 # Flask App
 app = Flask(__name__)
-os.makedirs("static", exist_ok=True)
 
 
 # ---------------- Helper Functions ---------------- #
 
 def clean_text(text: str) -> str:
     """Clean up Gemini output for safety."""
+    if not text:
+        return "Sorry, I could not generate a response."
     text = text.strip()
     text = " ".join(text.split())
     text = text.replace("*", '"')
@@ -59,111 +61,35 @@ def mitai_response(user_query: str) -> str:
     return clean_text(analysis)
 
 
-def text_to_speech(text: str, filename: str) -> str:     
-    """Convert text to speech using SarvamAI and save to static folder."""
-    filepath = os.path.join("static", filename)
-    response = client.text_to_speech.convert(
-        text=text,
-        target_language_code="en-IN",
-        speaker="vidya",
-        pitch=0,
-        pace=1,
-        loudness=1,
-        speech_sample_rate=22050,
-        enable_preprocessing=True,
-        model="bulbul:v2"
-    )
-    # Save audio
-    with open(filepath, "wb") as f:
-        f.write(response["audio_content"])
-    return filepath
-
-
-def speech_to_text(audio_path: str) -> str:
-    """Convert audio file to text using SarvamAI."""
-    with open(audio_path, "rb") as f:
-        response = client.speech_to_text.transcribe(
-            file=f,
-            model="saarika:v2.5",
-            language_code="en-IN"
-        )
-    return response.get("text", "Sorry, I could not understand your speech.")
-
-
 # ---------------- Routes ---------------- #
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    """Simple chatbot via JSON"""
-    data = request.get_json()
-    user_query = data.get("query")
+@app.route("/whatsapp", methods=["POST"])
+def whatsapp_webhook():
+    """Handle incoming WhatsApp messages from Twilio"""
+    user_number = request.form.get("From")      # e.g. whatsapp:+919876543210
+    user_query = request.form.get("Body")       # User's message
 
     if not user_query:
-        return jsonify({"error": "No query provided"}), 400
+        return "No query", 400
 
+    print(f"[WhatsApp] Message from {user_number}: {user_query}")
+
+    # Get AI reply
     reply_text = mitai_response(user_query)
-    audio_file = text_to_speech(reply_text, "reply.wav")
 
-    return jsonify({
-        "MITAI": reply_text,
-        "audio_path": f"/{audio_file}"
-    })
+    # Send reply back via Twilio
+    twilio_client.messages.create(
+        from_=TWILIO_WHATSAPP,
+        to=user_number,
+        body=reply_text
+    )
+
+    return "OK", 200
 
 
-@app.route("/exotel/voice", methods=["POST"])
-@app.route("/exotel/voice", methods=["POST"])
-def handle_exotel_call():
-    """Handle Exotel call: get speech -> AI -> TTS -> play back"""
-    call_sid = request.form.get("CallUUID")
-    recording_url = request.form.get("RecordingUrl")
-    dial_status = request.form.get("DialCallStatus")  # Call outcome: completed, busy, no-answer, failed
-
-    # Handle call failures
-    if dial_status in ["busy", "no-answer", "failed", "canceled"]:
-        fallback_text = "Sorry, we could not connect your call. Please try again later."
-        tts_file = f"{call_sid}_fallback.wav"
-        audio_path = text_to_speech(fallback_text, tts_file)
-        exotel_xml = f"""
-        <Response>
-            <Play>{request.url_root}{audio_path}</Play>
-        </Response>
-        """
-        return Response(exotel_xml, mimetype="text/xml")
-
-    # Default greeting if no recording yet
-    user_text = "Hello! I am mitaai. How can I assist you today?"
-
-    # If a recording exists, transcribe it
-    if recording_url:
-        wav_file = f"static/{call_sid}.wav"
-        try:
-            r = requests.get(recording_url)
-            r.raise_for_status()
-            with open(wav_file, "wb") as f:
-                f.write(r.content)
-            user_text = speech_to_text(wav_file)
-            print(f"[Exotel] Transcribed user text: {user_text}")
-        except Exception as e:
-            print(f"[Exotel] Error fetching or transcribing recording: {e}")
-            user_text = "Hello! How can I assist you today?"
-
-    # Generate AI response
-    try:
-        reply_text = mitai_response(user_text)
-    except Exception as e:
-        reply_text = "Sorry, I am having trouble understanding. Please try again."
-
-    # Convert AI response to speech
-    tts_file = f"{call_sid}_reply.wav"
-    audio_path = text_to_speech(reply_text, tts_file)
-
-    # Respond to Exotel
-    exotel_xml = f"""
-    <Response>
-        <Play>{request.url_root}{audio_path}</Play>
-    </Response>
-    """ 
-    return Response(exotel_xml, mimetype="text/xml")
+@app.route("/")
+def home():
+    return jsonify({"status": "MITAI WhatsApp chatbot running"})
 
 
 # ---------------- Main ---------------- #
