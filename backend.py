@@ -111,29 +111,58 @@ def chat():
 
 
 @app.route("/exotel/voice", methods=["POST"])
+@app.route("/exotel/voice", methods=["POST"])
 def handle_exotel_call():
     """Handle Exotel call: get speech -> AI -> TTS -> play back"""
     call_sid = request.form.get("CallUUID")
     recording_url = request.form.get("RecordingUrl")
+    dial_status = request.form.get("DialCallStatus")  # Call outcome: completed, busy, no-answer, failed
 
-    user_text = "Hello!"
+    # Handle call failures
+    if dial_status in ["busy", "no-answer", "failed", "canceled"]:
+        fallback_text = "Sorry, we could not connect your call. Please try again later."
+        tts_file = f"{call_sid}_fallback.wav"
+        audio_path = text_to_speech(fallback_text, tts_file)
+        exotel_xml = f"""
+        <Response>
+            <Play>{request.url_root}{audio_path}</Play>
+        </Response>
+        """
+        return Response(exotel_xml, mimetype="text/xml")
 
+    # Default greeting if no recording yet
+    user_text = "Hello! I am mitaai. How can I assist you today?"
+
+    # If a recording exists, transcribe it
     if recording_url:
         wav_file = f"static/{call_sid}.wav"
-        r = requests.get(recording_url)
-        with open(wav_file, "wb") as f:
-            f.write(r.content)
-        user_text = speech_to_text(wav_file)
+        try:
+            r = requests.get(recording_url)
+            r.raise_for_status()
+            with open(wav_file, "wb") as f:
+                f.write(r.content)
+            user_text = speech_to_text(wav_file)
+            print(f"[Exotel] Transcribed user text: {user_text}")
+        except Exception as e:
+            print(f"[Exotel] Error fetching or transcribing recording: {e}")
+            user_text = "Hello! How can I assist you today?"
 
-    reply_text = mitai_response(user_text)
+    # Generate AI response
+    try:
+        reply_text = mitai_response(user_text)
+    except Exception as e:
+        reply_text = "Sorry, I am having trouble understanding. Please try again."
+
+    # Convert AI response to speech
     tts_file = f"{call_sid}_reply.wav"
     audio_path = text_to_speech(reply_text, tts_file)
 
+    # Respond to Exotel
     exotel_xml = f"""
     <Response>
         <Play>{request.url_root}{audio_path}</Play>
     </Response>
-    """
+    """ 
     return Response(exotel_xml, mimetype="text/xml")
 
 
