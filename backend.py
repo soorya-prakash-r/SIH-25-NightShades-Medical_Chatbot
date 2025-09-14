@@ -59,7 +59,7 @@ def mitai_response(user_query: str) -> str:
     return clean_text(analysis)
 
 
-def text_to_speech(text: str, filename: str) -> str:
+def text_to_speech(text: str, filename: str) -> str:     
     """Convert text to speech using SarvamAI and save to static folder."""
     filepath = os.path.join("static", filename)
     response = client.text_to_speech.convert(
