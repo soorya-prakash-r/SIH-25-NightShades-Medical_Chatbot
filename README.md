@@ -1,5 +1,7 @@
 # 🤖 MITAI - AI WhatsApp Medical Assistant  
 
+## MITAI - Medical Information & Treatment Artificial Intelligence
+
 MITAI is an AI-powered medical assistant built with **Python (Flask)**, deployed on **Render**, and integrated with **Twilio WhatsApp API**.  
 It allows users to send queries via WhatsApp and get **real-time AI responses** directly in their chat.  
 
