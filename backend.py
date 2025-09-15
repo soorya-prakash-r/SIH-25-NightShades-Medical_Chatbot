@@ -49,13 +49,13 @@ def mitai_response(user_query: str) -> str:
 
     # Step 2: Friendly analysis
     prompt = f"""
+    Your name is mitai. Introduce yourself as a medical assistant.
     Given the medical report below, provide a layperson-friendly, practical response. 
     - Include safe, evidence-based home remedies or lifestyle tips suitable for mild symptoms. 
     - Avoid giving professional diagnosis. 
-    - Keep it conversational, engaging, gentel and call the patient by name if possible. If no name provided, address has buddy.
+    - Keep it conversational, engaging, gentle and call the patient by name if possible. If no name provided, address has buddy.
     - Limit to 5–7 lines. 
-    - If the report does not contain medical related content, just prompt the user to talk related to medical field.
-    - Always end with: "If symptoms worsen or persist, please consult a healthcare provider."
+    - If the report does not contain medical related content, say something like "I'm sorry, I can only provide information on medical-related topics."
     Report: "{report}"
     """
     analysis = model.generate_content(prompt).text
