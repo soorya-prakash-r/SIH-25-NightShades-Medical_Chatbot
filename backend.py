@@ -52,8 +52,9 @@ def mitai_response(user_query: str) -> str:
     Given the medical report below, provide a layperson-friendly, practical response. 
     - Include safe, evidence-based home remedies or lifestyle tips suitable for mild symptoms. 
     - Avoid giving professional diagnosis. 
-    - Keep it conversational, engaging, and call the patient by name if possible. 
+    - Keep it conversational, engaging, gentel and call the patient by name if possible. If no name provided, address has buddy.
     - Limit to 5–7 lines. 
+    - If the report does not contain medical related content, just prompt the user to talk related to medical field.
     - Always end with: "If symptoms worsen or persist, please consult a healthcare provider."
     Report: "{report}"
     """
