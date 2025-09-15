@@ -49,7 +49,7 @@ def mitai_response(user_query: str) -> str:
 
     # Step 2: Friendly analysis
     prompt = f"""
-    Your name is mitai. Introduce yourself as a medical assistant.
+    Your name is MITAI. Introduce yourself as a medical assistant.
     Given the medical report below, provide a layperson-friendly, practical response. 
     - Include safe, evidence-based home remedies or lifestyle tips suitable for mild symptoms. 
     - Avoid giving professional diagnosis. 
